@@ -1,0 +1,77 @@
+name: "{{DATA_PRODUCT_NAME}} Data Product"
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * *"
+
+env:
+  API: {{API_HOST}}/api
+  # Personal access token of the Dremio (service) user that runs dbt, stored as a repository secret.
+  DREMIO_PAT: ${{ secrets.DREMIO_PAT }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Sync Python deps
+        # Installs the dbt adapter, openlineage-dbt, datacontract-cli[all],
+        # entropy-data (and other dev deps) into the project's .venv at the
+        # versions pinned by uv.lock. All `uv run …` invocations below use
+        # this venv.
+        run: uv sync
+
+      - name: Create profiles.yml
+        run: |
+          mkdir -p ~/.dbt
+          cat > ~/.dbt/profiles.yml <<EOF
+          {{DBT_PROFILE}}:
+            target: prod
+            outputs:
+              prod:
+                type: dremio
+                cloud_host: {{DREMIO_HOST}}
+                cloud_project_id: {{DREMIO_PROJECT_ID}}
+                user: {{DREMIO_CI_USER}}
+                pat: "{{ env_var('DREMIO_PAT') }}"
+                use_ssl: true
+                enterprise_catalog_namespace: {{CATALOG}}
+                enterprise_catalog_folder: {{FOLDER}}
+                threads: 4
+          EOF
+
+      - name: dbt deps
+        run: uv run dbt deps
+
+      - name: dbt run
+        run: uv run dbt-ol run --target prod
+        env:
+          OPENLINEAGE__TRANSPORT__AUTH__APIKEY: ${{ secrets.ENTROPY_DATA_API_KEY }}
+
+      - name: dbt test
+        run: uv run dbt test --target prod
+
+      - name: Publish data product
+        run: uv run entropy-data dataproducts put {{DATA_PRODUCT_ID}} --file {{ODPS_FILE}}
+        env:
+          ENTROPY_DATA_API_KEY: ${{ secrets.ENTROPY_DATA_API_KEY }}
+
+      - name: Publish data contract
+        run: uv run entropy-data datacontracts put {{CONTRACT_ID}} --file models/output_ports/v1/{{CONTRACT_FILE}}
+        env:
+          ENTROPY_DATA_API_KEY: ${{ secrets.ENTROPY_DATA_API_KEY }}
+
+      - name: Data contract test
+        run: |
+          uv run datacontract test models/output_ports/v1/{{CONTRACT_FILE}} \
+            --server iceberg \
+            --publish $API/test-results
+        env:
+          ENTROPY_DATA_API_KEY: ${{ secrets.ENTROPY_DATA_API_KEY }}
+          # Reads the output-port tables through Dremio's Iceberg REST catalog with the same token.
+          DATACONTRACT_ICEBERG_TOKEN: ${{ secrets.DREMIO_PAT }}
+          DATACONTRACT_ICEBERG_PROPERTIES: '{"oauth2-server-uri":"{{DREMIO_LOGIN_URL}}/oauth/token","header.X-Iceberg-Access-Delegation":"vended-credentials"}'

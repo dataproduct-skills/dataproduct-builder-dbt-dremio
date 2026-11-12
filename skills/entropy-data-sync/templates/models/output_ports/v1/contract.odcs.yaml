@@ -1,0 +1,45 @@
+apiVersion: v3.2.0
+kind: DataContract
+
+id: "{{CONTRACT_ID}}"
+name: "{{DATA_PRODUCT_NAME}}"
+version: 1.0.0
+status: draft
+
+description:
+  usage: analytics
+  purpose: "{{PURPOSE}}"
+
+schema:
+  - name: "{{TABLE}}"
+    physicalType: table
+    properties:
+      - name: id
+        description: Primary key.
+        logicalType: string
+        required: true
+        primaryKey: true
+      - name: updated_at
+        description: Timestamp when this record was written by dbt.
+        logicalType: timestamp
+        required: true
+
+team:
+  name: "{{TEAM_NAME}}"
+
+servers:
+  # Where consumers query the data product in Dremio.
+  - server: production
+    type: dremio
+    environment: prod
+    host: "{{DREMIO_HOST}}"
+    port: 443
+    schema: "{{CATALOG}}.{{FOLDER}}"
+  # The same tables, read through Dremio's Iceberg REST catalog. `datacontract test --server iceberg` runs against it.
+  - server: iceberg
+    type: iceberg
+    environment: prod
+    catalog: "{{CATALOG}}"
+    catalogUrl: "{{CATALOG_URL}}"
+    warehouse: "{{CATALOG}}"
+    namespace: "{{FOLDER}}"

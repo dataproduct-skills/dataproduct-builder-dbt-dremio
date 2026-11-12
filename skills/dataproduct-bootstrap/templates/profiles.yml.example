@@ -1,0 +1,13 @@
+{{DBT_PROJECT_NAME}}:
+  target: dev
+  outputs:
+    dev:
+      type: dremio
+      cloud_host: {{DREMIO_HOST}}             # api.dremio.cloud (US) or api.eu.dremio.cloud (EU)
+      cloud_project_id: {{DREMIO_PROJECT_ID}}
+      user: {{DREMIO_USER}}                   # the email address of your Dremio user
+      pat: "{{ env_var('DREMIO_PAT') }}"      # personal access token: Account Settings → Personal Access Tokens
+      use_ssl: true
+      enterprise_catalog_namespace: {{CATALOG}}   # the project's catalog; tables and views are created in it
+      enterprise_catalog_folder: {{FOLDER}}       # folder inside the catalog, nested folders separated by dots
+      threads: 4
